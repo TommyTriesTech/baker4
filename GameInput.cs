@@ -10,9 +10,11 @@ public class GameInput : MonoBehaviour
     public event EventHandler OnJumpAction;
     public event EventHandler OnTestAction;
     public event EventHandler OnPauseAction;
+    public event EventHandler<bool> OnShiftHoldChanged; // New event for shift state
 
     // Input values
     private Vector2 movementInput;
+    private bool isShiftHeld = false;
 
     private PlayerInputActions playerInputActions;
 
@@ -31,6 +33,10 @@ public class GameInput : MonoBehaviour
         playerInputActions.Player.AlternateInteract.performed += AlternateInteract_performed;
         playerInputActions.Player.Test.performed += Test_performed;
         playerInputActions.Player.Pause.performed += Pause_performed;
+
+        // Subscribe to shift input
+        playerInputActions.Player.HoldShift.performed += HoldShift_performed;
+        playerInputActions.Player.HoldShift.canceled += HoldShift_canceled;
     }
 
     private void OnDestroy()
@@ -43,6 +49,8 @@ public class GameInput : MonoBehaviour
         playerInputActions.Player.AlternateInteract.performed -= AlternateInteract_performed;
         playerInputActions.Player.Test.performed -= Test_performed;
         playerInputActions.Player.Pause.performed -= Pause_performed;
+        playerInputActions.Player.HoldShift.performed -= HoldShift_performed;
+        playerInputActions.Player.HoldShift.canceled -= HoldShift_canceled;
 
         playerInputActions.Dispose();
     }
@@ -67,6 +75,7 @@ public class GameInput : MonoBehaviour
     {
         OnInteractAction?.Invoke(this, EventArgs.Empty);
     }
+
     private void AlternateInteract_performed(InputAction.CallbackContext context)
     {
         OnAlternateInteractAction?.Invoke(this, EventArgs.Empty);
@@ -82,10 +91,28 @@ public class GameInput : MonoBehaviour
         OnPauseAction?.Invoke(this, EventArgs.Empty);
     }
 
+    private void HoldShift_performed(InputAction.CallbackContext context)
+    {
+        isShiftHeld = true;
+        OnShiftHoldChanged?.Invoke(this, true);
+    }
+
+    private void HoldShift_canceled(InputAction.CallbackContext context)
+    {
+        isShiftHeld = false;
+        OnShiftHoldChanged?.Invoke(this, false);
+    }
+
     // Public accessor for movement values
     public Vector2 GetMovementVectorNormalized()
     {
         return movementInput;
+    }
+
+    // Public accessor for shift state
+    public bool IsShiftHeld()
+    {
+        return isShiftHeld;
     }
 
     private void OnDisable()

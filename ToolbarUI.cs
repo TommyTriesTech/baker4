@@ -12,6 +12,10 @@ public class ToolbarUI : MonoBehaviour
     {
         GameObject newItemSlot = Instantiate(itemSlotUI, slotManager);
         ItemSlotUI newItemSlotUI = newItemSlot.GetComponent<ItemSlotUI>();
+
+        // Set the index based on the current count
+        newItemSlotUI.SetIndex(itemSlotUIList.Count);
+
         itemSlotUIList.Add(newItemSlotUI);
     }
 
@@ -21,5 +25,15 @@ public class ToolbarUI : MonoBehaviour
         {
             itemSlotUIList[index].UpdateVisual(itemSO, quantity);
         }
+    }
+
+    // Helper method to get slot index - using the stored index
+    public int GetSlotIndex(ItemSlotUI slotUI)
+    {
+        if (slotUI != null)
+        {
+            return slotUI.GetIndex();
+        }
+        return itemSlotUIList.IndexOf(slotUI);
     }
 }

@@ -7,6 +7,7 @@ public class EventManager : MonoBehaviour
     public event System.Action<Item> OnItemPickupSuccess;
     public event System.Action<ItemSlotUI, ItemSlotUI> OnItemSlotSwap;
     public event System.Action<ItemSlotUI, ItemSlotUI, bool> OnItemSlotSwapComplete;
+    public event System.Action<ItemSlotUI> OnQuickItemTransfer;
 
     private void Awake()
     {
@@ -37,5 +38,12 @@ public class EventManager : MonoBehaviour
     public void ItemSlotSwapComplete(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, bool success)
     {
         OnItemSlotSwapComplete?.Invoke(sourceSlotUI, targetSlotUI, success);
+    }
+
+    // Method to trigger quick transfer event
+    public void OnQuickTransfer(ItemSlotUI sourceSlotUI)
+    {
+        Debug.Log($"Quick transfer triggered from slot");
+        OnQuickItemTransfer?.Invoke(sourceSlotUI);
     }
 }

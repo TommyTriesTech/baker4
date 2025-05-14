@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
 {
     [HideInInspector] public Transform parentAfterDrag;
     [HideInInspector] public ItemSlotUI sourceSlotUI;
@@ -83,6 +83,23 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
             if (GameServices.EventManagerService != null)
             {
                 GameServices.EventManagerService.OnItemSwap(sourceSlotUI, targetSlotUI);
+            }
+        }
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        // Check for Left click + Shift held
+        if (eventData.button == PointerEventData.InputButton.Left &&
+            GameServices.GameInputService != null &&
+            GameServices.GameInputService.IsShiftHeld())
+        {
+            sourceSlotUI = GetComponentInParent<ItemSlotUI>();
+
+            if (sourceSlotUI != null && GameServices.EventManagerService != null)
+            {
+                // Trigger quick transfer event
+                GameServices.EventManagerService.OnQuickTransfer(sourceSlotUI);
             }
         }
     }

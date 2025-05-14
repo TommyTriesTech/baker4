@@ -129,8 +129,10 @@ public abstract class InventoryBase : MonoBehaviour
             return false;
         }
 
+        int sourceQuantity = itemSlotList[sourceIndex].GetQuantity();
+
         // Get the item from source slot
-        if (!itemSlotList[sourceIndex].TakeItems(1, out ItemSO itemToTransfer, out int quantityToTransfer))
+        if (!itemSlotList[sourceIndex].TakeItems(sourceQuantity, out ItemSO itemToTransfer, out int quantityToTransfer))
         {
             return false;
         }

@@ -8,6 +8,7 @@ public class InventoryMediator : MonoBehaviour
         if (GameServices.EventManagerService != null)
         {
             GameServices.EventManagerService.OnItemSlotSwap += HandleItemSlotSwap;
+            GameServices.EventManagerService.OnQuickItemTransfer += HandleQuickTransfer;
         }
     }
 
@@ -17,6 +18,102 @@ public class InventoryMediator : MonoBehaviour
         if (GameServices.EventManagerService != null)
         {
             GameServices.EventManagerService.OnItemSlotSwap -= HandleItemSlotSwap;
+            GameServices.EventManagerService.OnQuickItemTransfer -= HandleQuickTransfer;
+        }
+    }
+
+    private void HandleQuickTransfer(ItemSlotUI sourceSlotUI)
+    {
+        // Check if the source slot is valid
+        if (sourceSlotUI == null)
+        {
+            Debug.LogWarning("Invalid source slot for quick transfer");
+            return;
+        }
+
+        // Get the inventory info for the source slot
+        var sourceInfo = GetInventoryInfo(sourceSlotUI);
+
+        if (sourceInfo.inventory == null)
+        {
+            Debug.LogWarning("Could not find source inventory for quick transfer");
+            return;
+        }
+
+        // Determine the target inventory (opposite of source)
+        InventoryBase targetInventory = null;
+
+        // Check if source is toolbar, if so transfer to currently open inventory
+        if (sourceInfo.isToolbar)
+        {
+            if (GameServices.InventoryUIManagerService != null)
+            {
+                var currentlyOpen = GameServices.InventoryUIManagerService.GetCurrentlyOpenInventory();
+                if (currentlyOpen != null)
+                {
+                    targetInventory = currentlyOpen;
+                }
+            }
+        }
+        else
+        {
+            // Source is an inventory UI, transfer to toolbar
+            // Find the toolbar (player's toolbar)
+            Toolbar toolbar = FindAnyObjectByType<Toolbar>();
+            if (toolbar != null)
+            {
+                targetInventory = toolbar;
+            }
+        }
+
+        if (targetInventory == null)
+        {
+            Debug.LogWarning("Could not find target inventory for quick transfer");
+            return;
+        }
+
+        // Get source slot index
+        int sourceIndex = GetSlotIndex(sourceSlotUI, sourceInfo);
+        if (sourceIndex == -1)
+        {
+            Debug.LogWarning("Could not determine source slot index");
+            return;
+        }
+
+        // Get source item info
+        var sourceSlot = sourceInfo.inventory.GetItemSlotList()[sourceIndex];
+        if (sourceSlot.isEmpty())
+        {
+            Debug.LogWarning("Source slot is empty");
+            return;
+        }
+
+        ItemSO sourceItem = sourceSlot.GetItem();
+        int sourceQuantity = sourceSlot.GetQuantity();
+
+        // Try to add to target inventory (handles stacking automatically)
+        if (targetInventory.TryAddItem(sourceItem, sourceQuantity, out int leftover))
+        {
+            // Successfully transferred, update source slot
+            if (leftover == 0)
+            {
+                // All items transferred
+                sourceSlot.Clear();
+            }
+            else
+            {
+                // Some items couldn't transfer
+                sourceSlot.SetItem(sourceItem, leftover);
+            }
+
+            // Update source UI
+            sourceInfo.inventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
+
+            Debug.Log($"Quick transferred {sourceQuantity - leftover} {sourceItem.itemName}(s)");
+        }
+        else
+        {
+            Debug.Log($"Could not transfer {sourceItem.itemName} - no space available");
         }
     }
 
@@ -223,25 +320,10 @@ public class InventoryMediator : MonoBehaviour
 
     private int GetSlotIndex(ItemSlotUI slotUI, InventoryInfo info)
     {
-        if (info.isToolbar && info.toolbarUI != null)
+        // Use the index stored in the ItemSlotUI itself - much more reliable!
+        if (slotUI != null)
         {
-            // For toolbar, we need to find the index manually
-            Transform slotsParent = info.toolbarUI.transform.Find("SlotManager");
-            if (slotsParent != null)
-            {
-                for (int i = 0; i < slotsParent.childCount; i++)
-                {
-                    if (slotsParent.GetChild(i).GetComponent<ItemSlotUI>() == slotUI)
-                    {
-                        return i;
-                    }
-                }
-            }
-        }
-        else if (!info.isToolbar && info.inventoryUI != null)
-        {
-            // For regular inventory UI, use the existing method
-            return info.inventoryUI.GetSlotIndex(slotUI);
+            return slotUI.GetIndex();
         }
 
         return -1;
