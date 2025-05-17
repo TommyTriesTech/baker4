@@ -15,6 +15,8 @@ public class GameInput : MonoBehaviour
     // Input values
     private Vector2 movementInput;
     private bool isShiftHeld = false;
+    private bool isPointerOverUI = false;
+
 
     private PlayerInputActions playerInputActions;
 
@@ -37,6 +39,11 @@ public class GameInput : MonoBehaviour
         // Subscribe to shift input
         playerInputActions.Player.HoldShift.performed += HoldShift_performed;
         playerInputActions.Player.HoldShift.canceled += HoldShift_canceled;
+    }
+
+    private void Update()
+    {
+        isPointerOverUI = UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
     }
 
     private void OnDestroy()
@@ -78,6 +85,13 @@ public class GameInput : MonoBehaviour
 
     private void AlternateInteract_performed(InputAction.CallbackContext context)
     {
+
+        // Skip world interactions if mouse is over UI
+        if (isPointerOverUI)
+        {
+            return;
+        }
+
         OnAlternateInteractAction?.Invoke(this, EventArgs.Empty);
     }
 
@@ -119,5 +133,11 @@ public class GameInput : MonoBehaviour
     {
         if (playerInputActions != null)
             playerInputActions.Player.Disable();
+    }
+
+    public bool IsShiftDirectlyPressed()
+    {
+        if (playerInputActions == null) return false;
+        return playerInputActions.Player.HoldShift.ReadValue<float>() > 0;
     }
 }

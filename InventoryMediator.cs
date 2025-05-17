@@ -24,10 +24,15 @@ public class InventoryMediator : MonoBehaviour
 
     private void HandleQuickTransfer(ItemSlotUI sourceSlotUI)
     {
+        Debug.Log("=== QUICK TRANSFER START ===");
+
+        // Add this line to see if multiple quick transfers are being triggered
+        Debug.Log($"Quick Transfer triggered for slot {sourceSlotUI?.GetIndex()} at time {Time.time}");
+
         // Check if the source slot is valid
         if (sourceSlotUI == null)
         {
-            Debug.LogWarning("Invalid source slot for quick transfer");
+            Debug.LogError("Invalid source slot for quick transfer");
             return;
         }
 
@@ -36,7 +41,7 @@ public class InventoryMediator : MonoBehaviour
 
         if (sourceInfo.inventory == null)
         {
-            Debug.LogWarning("Could not find source inventory for quick transfer");
+            Debug.LogError("Could not find source inventory for quick transfer");
             return;
         }
 
@@ -46,29 +51,41 @@ public class InventoryMediator : MonoBehaviour
         // Check if source is toolbar, if so transfer to currently open inventory
         if (sourceInfo.isToolbar)
         {
+            Debug.Log("Source is toolbar, looking for open inventory");
             if (GameServices.InventoryUIManagerService != null)
             {
                 var currentlyOpen = GameServices.InventoryUIManagerService.GetCurrentlyOpenInventory();
                 if (currentlyOpen != null)
                 {
                     targetInventory = currentlyOpen;
+                    Debug.Log($"Found target inventory: {currentlyOpen.name}");
+                }
+                else
+                {
+                    Debug.LogWarning("No open inventory found");
                 }
             }
         }
         else
         {
+            Debug.Log("Source is inventory, looking for toolbar");
             // Source is an inventory UI, transfer to toolbar
             // Find the toolbar (player's toolbar)
             Toolbar toolbar = FindAnyObjectByType<Toolbar>();
             if (toolbar != null)
             {
                 targetInventory = toolbar;
+                Debug.Log($"Found target toolbar: {toolbar.name}");
+            }
+            else
+            {
+                Debug.LogWarning("No toolbar found");
             }
         }
 
         if (targetInventory == null)
         {
-            Debug.LogWarning("Could not find target inventory for quick transfer");
+            Debug.LogError("Could not find target inventory for quick transfer");
             return;
         }
 
@@ -76,9 +93,11 @@ public class InventoryMediator : MonoBehaviour
         int sourceIndex = GetSlotIndex(sourceSlotUI, sourceInfo);
         if (sourceIndex == -1)
         {
-            Debug.LogWarning("Could not determine source slot index");
+            Debug.LogError("Could not determine source slot index");
             return;
         }
+
+        Debug.Log($"Source slot index: {sourceIndex}");
 
         // Get source item info
         var sourceSlot = sourceInfo.inventory.GetItemSlotList()[sourceIndex];
@@ -91,6 +110,8 @@ public class InventoryMediator : MonoBehaviour
         ItemSO sourceItem = sourceSlot.GetItem();
         int sourceQuantity = sourceSlot.GetQuantity();
 
+        Debug.Log($"Transferring {sourceQuantity}x {sourceItem.itemName}");
+
         // Try to add to target inventory (handles stacking automatically)
         if (targetInventory.TryAddItem(sourceItem, sourceQuantity, out int leftover))
         {
@@ -99,11 +120,13 @@ public class InventoryMediator : MonoBehaviour
             {
                 // All items transferred
                 sourceSlot.Clear();
+                Debug.Log("All items transferred, clearing source slot");
             }
             else
             {
                 // Some items couldn't transfer
                 sourceSlot.SetItem(sourceItem, leftover);
+                Debug.Log($"Partial transfer, {leftover} items remain in source");
             }
 
             // Update source UI
@@ -113,11 +136,13 @@ public class InventoryMediator : MonoBehaviour
         }
         else
         {
-            Debug.Log($"Could not transfer {sourceItem.itemName} - no space available");
+            Debug.LogWarning($"Could not transfer {sourceItem.itemName} - no space available");
         }
+
+        Debug.Log("=== QUICK TRANSFER END ===");
     }
 
-    private void HandleItemSlotSwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI)
+    private void HandleItemSlotSwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, int dragQuantity, bool isPartialDrag)
     {
         // Check if both slots are valid
         if (sourceSlotUI == null || targetSlotUI == null)
@@ -140,16 +165,16 @@ public class InventoryMediator : MonoBehaviour
         if (sourceInfo.inventory == targetInfo.inventory)
         {
             // Same inventory swap
-            HandleSameInventorySwap(sourceSlotUI, targetSlotUI, sourceInfo, targetInfo);
+            HandleSameInventorySwap(sourceSlotUI, targetSlotUI, sourceInfo, targetInfo, dragQuantity, isPartialDrag);
         }
         else
         {
             // Different inventory swap/transfer
-            HandleDifferentInventorySwap(sourceSlotUI, targetSlotUI, sourceInfo, targetInfo);
+            HandleDifferentInventorySwap(sourceSlotUI, targetSlotUI, sourceInfo, targetInfo, dragQuantity, isPartialDrag);
         }
     }
 
-    private void HandleSameInventorySwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, InventoryInfo sourceInfo, InventoryInfo targetInfo)
+    private void HandleSameInventorySwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, InventoryInfo sourceInfo, InventoryInfo targetInfo, int dragQuantity, bool isPartialDrag)
     {
         InventoryBase inventory = sourceInfo.inventory;
 
@@ -162,7 +187,18 @@ public class InventoryMediator : MonoBehaviour
             return;
         }
 
-        bool success = inventory.TrySwapItems(sourceIndex, targetIndex);
+        bool success = false;
+
+        if (isPartialDrag && dragQuantity > 0)
+        {
+            // Handle partial drag within same inventory
+            success = HandlePartialStackSplit(inventory, sourceIndex, targetIndex, dragQuantity);
+        }
+        else
+        {
+            // Full swap/move
+            success = inventory.TrySwapItems(sourceIndex, targetIndex);
+        }
 
         // Notify that the swap is complete
         if (GameServices.EventManagerService != null)
@@ -171,7 +207,7 @@ public class InventoryMediator : MonoBehaviour
         }
     }
 
-    private void HandleDifferentInventorySwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, InventoryInfo sourceInfo, InventoryInfo targetInfo)
+    private void HandleDifferentInventorySwap(ItemSlotUI sourceSlotUI, ItemSlotUI targetSlotUI, InventoryInfo sourceInfo, InventoryInfo targetInfo, int dragQuantity, bool isPartialDrag)
     {
         InventoryBase sourceInventory = sourceInfo.inventory;
         InventoryBase targetInventory = targetInfo.inventory;
@@ -186,74 +222,82 @@ public class InventoryMediator : MonoBehaviour
         }
 
         bool success = false;
-
-        // Get source item info
         var sourceSlot = sourceInventory.GetItemSlotList()[sourceIndex];
         var targetSlot = targetInventory.GetItemSlotList()[targetIndex];
 
         if (!sourceSlot.isEmpty())
         {
             ItemSO sourceItem = sourceSlot.GetItem();
-            int sourceQuantity = sourceSlot.GetQuantity();
+            int quantityToTransfer = isPartialDrag && dragQuantity > 0 ? dragQuantity : sourceSlot.GetQuantity();
 
             if (targetSlot.isEmpty())
             {
-                // Target slot is empty, try to transfer the item
-                success = sourceInventory.TryTransferItemTo(sourceIndex, targetInventory, targetIndex);
+                // Target is empty - transfer the specified quantity
+                if (sourceSlot.TakeItems(quantityToTransfer, out ItemSO takenItem, out int takenQuantity))
+                {
+                    if (targetSlot.TryAddItems(takenItem, takenQuantity, out int leftover))
+                    {
+                        // Put any leftover back in source
+                        if (leftover > 0)
+                        {
+                            sourceSlot.TryAddItems(takenItem, leftover, out _);
+                        }
+
+                        sourceInventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
+                        targetInventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
+                        success = true;
+                    }
+                    else
+                    {
+                        // Failed to add to target, put back in source
+                        sourceSlot.TryAddItems(takenItem, takenQuantity, out _);
+                    }
+                }
             }
             else
             {
-                // Target slot has an item, try to swap
+                // Target has item - check if same and stackable
                 ItemSO targetItem = targetSlot.GetItem();
-                int targetQuantity = targetSlot.GetQuantity();
 
-                // Check if items are the same and stackable
                 if (sourceItem == targetItem && sourceItem.isStackable)
                 {
-                    // Try to stack items
-                    if (targetSlot.TryAddItems(sourceItem, sourceQuantity, out int leftover))
+                    // Same item - try to stack
+                    if (sourceSlot.TakeItems(quantityToTransfer, out ItemSO takenItem, out int takenQuantity))
                     {
-                        // Successfully stacked, remove from source
-                        sourceSlot.Clear();
-
-                        // If there's leftover, put it back in source
-                        if (leftover > 0)
+                        if (targetSlot.TryAddItems(takenItem, takenQuantity, out int leftover))
                         {
-                            sourceSlot.SetItem(sourceItem, leftover);
-                        }
+                            // Put any leftover back in source
+                            if (leftover > 0)
+                            {
+                                sourceSlot.TryAddItems(takenItem, leftover, out _);
+                            }
 
-                        // Update UIs
-                        sourceInventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
-                        targetInventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
-
-                        success = true;
-                    }
-                }
-                else
-                {
-                    // Different items, perform a swap
-                    // Take all items from source
-                    if (sourceSlot.TakeItems(sourceQuantity, out ItemSO takenSource, out int takenSourceQuantity))
-                    {
-                        // Take all items from target
-                        if (targetSlot.TakeItems(targetQuantity, out ItemSO takenTarget, out int takenTargetQuantity))
-                        {
-                            // Put source item in target slot
-                            targetSlot.TryAddItems(takenSource, takenSourceQuantity, out _);
-                            // Put target item in source slot
-                            sourceSlot.TryAddItems(takenTarget, takenTargetQuantity, out _);
-
-                            // Update UIs
                             sourceInventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
                             targetInventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
-
                             success = true;
                         }
                         else
                         {
-                            // Failed to take from target, put back in source
-                            sourceSlot.TryAddItems(takenSource, takenSourceQuantity, out _);
+                            // Failed to stack, put back in source
+                            sourceSlot.TryAddItems(takenItem, takenQuantity, out _);
                         }
+                    }
+                }
+                else if (!isPartialDrag)
+                {
+                    // Different items and full drag - swap them
+                    int sourceQuantity = sourceSlot.GetQuantity();
+                    int targetQuantity = targetSlot.GetQuantity();
+
+                    if (sourceSlot.TakeItems(sourceQuantity, out ItemSO takenSource, out int takenSourceQuantity) &&
+                        targetSlot.TakeItems(targetQuantity, out ItemSO takenTarget, out int takenTargetQuantity))
+                    {
+                        sourceSlot.TryAddItems(takenTarget, takenTargetQuantity, out _);
+                        targetSlot.TryAddItems(takenSource, takenSourceQuantity, out _);
+
+                        sourceInventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
+                        targetInventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
+                        success = true;
                     }
                 }
             }
@@ -264,6 +308,54 @@ public class InventoryMediator : MonoBehaviour
         {
             GameServices.EventManagerService.ItemSlotSwapComplete(sourceSlotUI, targetSlotUI, success);
         }
+    }
+
+    private bool HandlePartialStackSplit(InventoryBase inventory, int sourceIndex, int targetIndex, int quantityToMove)
+    {
+        var sourceSlot = inventory.GetItemSlotList()[sourceIndex];
+        var targetSlot = inventory.GetItemSlotList()[targetIndex];
+
+        if (sourceSlot.isEmpty() || quantityToMove <= 0) return false;
+
+        ItemSO sourceItem = sourceSlot.GetItem();
+
+        if (targetSlot.isEmpty())
+        {
+            // Target is empty - move partial stack
+            if (sourceSlot.TakeItems(quantityToMove, out ItemSO takenItem, out int takenQuantity))
+            {
+                targetSlot.TryAddItems(takenItem, takenQuantity, out _);
+                inventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
+                inventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
+                return true;
+            }
+        }
+        else if (targetSlot.GetItem() == sourceItem && sourceItem.isStackable)
+        {
+            // Same item - try to stack partial amount
+            if (sourceSlot.TakeItems(quantityToMove, out ItemSO takenItem, out int takenQuantity))
+            {
+                if (targetSlot.TryAddItems(takenItem, takenQuantity, out int leftover))
+                {
+                    // Put any leftover back in source
+                    if (leftover > 0)
+                    {
+                        sourceSlot.TryAddItems(takenItem, leftover, out _);
+                    }
+
+                    inventory.UpdateUI(sourceIndex, sourceSlot.GetItem(), sourceSlot.GetQuantity());
+                    inventory.UpdateUI(targetIndex, targetSlot.GetItem(), targetSlot.GetQuantity());
+                    return true;
+                }
+                else
+                {
+                    // Failed to add, put back in source
+                    sourceSlot.TryAddItems(takenItem, takenQuantity, out _);
+                }
+            }
+        }
+
+        return false;
     }
 
     private struct InventoryInfo

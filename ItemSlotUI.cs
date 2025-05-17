@@ -5,19 +5,16 @@ using UnityEngine.UI;
 
 public class ItemSlotUI : MonoBehaviour, IDropHandler
 {
-    // References to child objects (set these in the inspector)
-    [SerializeField] private GameObject itemObject; // The "Item" GameObject
-    [SerializeField] private Image itemSprite; // The ItemSprite child of Item
-    [SerializeField] private TextMeshProUGUI quantityText; // The QuantityText child of Item
+    [SerializeField] private GameObject itemObject;
+    [SerializeField] private Image itemSprite;
+    [SerializeField] private TextMeshProUGUI quantityText;
 
-    // Current item data
     private ItemSO currentItemSO;
     private int slotIndex = -1;
+    private int originalQuantity = 0; // Track original quantity for drag operations
 
-    // If you prefer, the script can find these automatically
     private void Awake()
     {
-        // Auto-find child objects if not assigned
         if (itemObject == null)
         {
             itemObject = transform.Find("Background/Item")?.gameObject;
@@ -50,6 +47,7 @@ public class ItemSlotUI : MonoBehaviour, IDropHandler
     public void ClearSlot()
     {
         currentItemSO = null;
+        originalQuantity = 0;
 
         if (itemObject != null)
         {
@@ -70,17 +68,16 @@ public class ItemSlotUI : MonoBehaviour, IDropHandler
 
     public void OnDrop(PointerEventData eventData)
     {
-        // The DraggableItem script will handle the event triggering
-        // We don't need to do anything here
+        // DraggableItem handles event triggering
     }
 
     public void UpdateVisual(ItemSO itemSO, int quantity = 1)
     {
         currentItemSO = itemSO;
+        originalQuantity = quantity;
 
         if (itemSO != null && quantity > 0)
         {
-            // Show the item
             if (itemObject != null)
             {
                 itemObject.SetActive(true);
@@ -107,8 +104,41 @@ public class ItemSlotUI : MonoBehaviour, IDropHandler
         }
         else
         {
-            // Clear the slot
             ClearSlot();
+        }
+    }
+
+    // Update visual during drag for partial stacks
+    public void UpdateDragVisual(int dragQuantity)
+    {
+        if (quantityText != null && currentItemSO != null && currentItemSO.isStackable)
+        {
+            if (dragQuantity > 1)
+            {
+                quantityText.text = dragQuantity.ToString();
+                quantityText.gameObject.SetActive(true);
+            }
+            else
+            {
+                quantityText.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    // Restore original visual after drag
+    public void RestoreOriginalVisual()
+    {
+        if (quantityText != null && currentItemSO != null && currentItemSO.isStackable)
+        {
+            if (originalQuantity > 1)
+            {
+                quantityText.text = originalQuantity.ToString();
+                quantityText.gameObject.SetActive(true);
+            }
+            else
+            {
+                quantityText.gameObject.SetActive(false);
+            }
         }
     }
 

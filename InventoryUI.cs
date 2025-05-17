@@ -7,7 +7,7 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] private Transform slotManager;
     [SerializeField] private GameObject itemSlotUI;
     [SerializeField] private GameObject inventoryPanel;
-    [SerializeField] private bool isOpen;
+    [SerializeField] private bool isOpen; // Added missing field
 
     private List<ItemSlotUI> itemSlotUIList = new List<ItemSlotUI>();
 
